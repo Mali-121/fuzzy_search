@@ -1,6 +1,10 @@
 import requests
 import pandas as pd
 from rapidfuzz import fuzz
+import tkinter as tk
+from tkinter import messagebox, ttk
+from config import API_KEY, SEARCH_ENGINE_ID
+
 
 API_KEY = "AIzaSyAY3Fa2B-WVkHQxTwiF6oynpNLwS6t4oY0"
 SEARCH_ENGINE_ID = "950bbb4edb1b84bb7"
@@ -15,21 +19,15 @@ def google_search(keyword, start=1):
         return {}
 
 def score_similarity(domain, keyword):
-    # Tokenize the keyword
     words = keyword.lower().split()
     domain_lower = domain.lower()
 
-    # Calculate exact and partial matches
     exact_match = fuzz.ratio(domain_lower, keyword.lower())
     partial_match = fuzz.partial_ratio(domain_lower, keyword.lower())
 
-    # Split domain name into components (e.g., "innovationexpress.org" -> "innovationexpress")
     domain_main = domain_lower.split('.')[0]
-
-    # Boost scores for exact matches with the main domain
     exact_domain_match = fuzz.ratio(domain_main, keyword.lower())
 
-    # Assign weight for domain suffix
     domain_suffix = domain.split('.')[-1].lower()
     suffix_weight = 0
     if domain_suffix in ['com', 'org', 'net', '.info', 'ca', 'co', 'uk', '.co.uk', '.biz', '.com.au']:
@@ -37,10 +35,8 @@ def score_similarity(domain, keyword):
     elif domain_suffix in ['io', 'ai', 'tech']:
         suffix_weight = 3
 
-    # Combine scores
     total_score = (exact_match * 0.4 + partial_match * 0.4 + exact_domain_match * 0.2) + suffix_weight
 
-    # Convert total score into a 1-5 scale
     if total_score > 90:
         return 5
     elif total_score > 75:
@@ -58,31 +54,30 @@ def process_results(data, keyword):
         'github.com', 'tiktok.com', 'wikipedia.com', 'twitter.com', 'x.com',
         'wn.com', 'justdial.com', 'humbleworth.com', 'ebay.com'
     ]
-    seen_domains = set()  # Track already processed domains
+    seen_domains = set()
     results = []
 
     for item in data.get('items', []):
         domain = item['displayLink']
-        if domain in seen_domains:  # Skip duplicate domains
+        if domain in seen_domains:
             continue
         if any(excluded in domain for excluded in excluded_domains) or \
            'facebook.com' in domain or 'linkedin.com' in domain or 'instagram.com' in domain or 'youtube.com' in domain:
             continue
 
-        seen_domains.add(domain)  # Mark domain as seen
+        seen_domains.add(domain)
         score = score_similarity(domain, keyword)
-        if score >= 1:  # Filter results with a score of 1 or higher
+        if score >= 1:
             results.append({'Domain': domain, 'Similarity Score': score})
     
     return results
 
-def main():
-    keyword = input("Enter a keyword to search: ").strip()
+def search_and_display(keyword, num_pages, tree):
     try:
-        num_pages = int(input("Enter the number of pages to search: ").strip())
+        num_pages = int(num_pages)
     except ValueError:
-        print("Invalid input. Defaulting to 3 pages.")
-        num_pages = 3
+        messagebox.showerror("Error", "Number of pages must be an integer.")
+        return
 
     all_results = []
     for start in range(1, num_pages * 10, 10):
@@ -92,14 +87,52 @@ def main():
             all_results.extend(results)
         else:
             print(f"No results found for start={start}")
+
     df = pd.DataFrame(all_results)
     if not df.empty:
-        print(df)
-        print(f"\nCount of results with score 1 or higher: {len(df)}")
+        # Clear the tree view
+        for item in tree.get_children():
+            tree.delete(item)
+
+        # Add new results to the tree view
+        for _, row in df.iterrows():
+            tree.insert("", "end", values=(row['Domain'], row['Similarity Score']))
+
+        # Save to CSV
         df.to_csv("search_results.csv", index=False)
-        print("Results saved to 'search_results.csv'.")
+        messagebox.showinfo("Success", "Results saved to 'search_results.csv'.")
     else:
-        print("No relevant results found.")
+        messagebox.showinfo("No Results", "No relevant results found.")
+
+def create_gui():
+    root = tk.Tk()
+    root.title("Google Search Similarity Tool")
+
+    # Input fields
+    tk.Label(root, text="Enter Keyword:").grid(row=0, column=0, padx=10, pady=5)
+    keyword_entry = tk.Entry(root, width=40)
+    keyword_entry.grid(row=0, column=1, padx=10, pady=5)
+
+    tk.Label(root, text="Number of Pages:").grid(row=1, column=0, padx=10, pady=5)
+    pages_entry = tk.Entry(root, width=10)
+    pages_entry.grid(row=1, column=1, padx=10, pady=5, sticky="w")
+
+    # Treeview to display results
+    columns = ("Domain", "Similarity Score")
+    tree = ttk.Treeview(root, columns=columns, show="headings")
+    tree.heading("Domain", text="Domain")
+    tree.heading("Similarity Score", text="Similarity Score")
+    tree.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+
+    # Search button
+    search_button = tk.Button(
+        root,
+        text="Search",
+        command=lambda: search_and_display(keyword_entry.get(), pages_entry.get(), tree)
+    )
+    search_button.grid(row=2, column=0, columnspan=2, pady=10)
+
+    root.mainloop()
 
 if __name__ == "__main__":
-    main()
+    create_gui()

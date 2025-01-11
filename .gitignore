@@ -21,3 +21,6 @@ def process_results(data, keyword):
             results.append({'Domain': domain, 'Similarity Score': score})
     
     return results
+    
+# Configuration files
+    config.py
