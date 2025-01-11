@@ -1,0 +1,23 @@
+def process_results(data, keyword):
+    excluded_domains = [
+        'reddit.com', 'quora.com', 'pinterest.com', 'youtube.com', 'linkedin.com',
+        'github.com', 'tiktok.com', 'wikipedia.com', 'twitter.com', 'x.com',
+        'wn.com', 'justdial.com', 'humbleworth.com', 'ebay.com'
+    ]
+    seen_domains = set()  # Track already processed domains
+    results = []
+
+    for item in data.get('items', []):
+        domain = item['displayLink']
+        if domain in seen_domains:  # Skip duplicate domains
+            continue
+        if any(excluded in domain for excluded in excluded_domains) or \
+           'facebook.com' in domain or 'linkedin.com' in domain or 'instagram.com' in domain or 'youtube.com' in domain:
+            continue
+
+        seen_domains.add(domain)  # Mark domain as seen
+        score = score_similarity(domain, keyword)
+        if score >= 1:  # Filter results with a score of 1 or higher
+            results.append({'Domain': domain, 'Similarity Score': score})
+    
+    return results
