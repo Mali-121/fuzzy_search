@@ -3,11 +3,14 @@ import pandas as pd
 from rapidfuzz import fuzz
 import tkinter as tk
 from tkinter import messagebox, ttk
-from config import API_KEY, SEARCH_ENGINE_ID
+from dotenv import load_dotenv  # Import the library
+import os
+# Load environment variables from .env file
+load_dotenv()
 
-
-API_KEY = "AIzaSyAY3Fa2B-WVkHQxTwiF6oynpNLwS6t4oY0"
-SEARCH_ENGINE_ID = "950bbb4edb1b84bb7"
+# Access the variables from the .env file
+API_KEY = os.getenv("API_KEY")
+SEARCH_ENGINE_ID = os.getenv("SEARCH_ENGINE_ID")
 
 def google_search(keyword, start=1):
     url = f"https://www.googleapis.com/customsearch/v1?key={API_KEY}&cx={SEARCH_ENGINE_ID}&q={keyword}&start={start}"
@@ -22,21 +25,29 @@ def score_similarity(domain, keyword):
     words = keyword.lower().split()
     domain_lower = domain.lower()
 
+    # Calculate exact and partial matches
     exact_match = fuzz.ratio(domain_lower, keyword.lower())
     partial_match = fuzz.partial_ratio(domain_lower, keyword.lower())
 
+    # Split domain name into components (e.g., "innovationexpress.org" -> "innovationexpress")
     domain_main = domain_lower.split('.')[0]
     exact_domain_match = fuzz.ratio(domain_main, keyword.lower())
 
-    domain_suffix = domain.split('.')[-1].lower()
-    suffix_weight = 0
-    if domain_suffix in ['com', 'org', 'net', '.info', 'ca', 'co', 'uk', '.co.uk', '.biz', '.com.au']:
-        suffix_weight = 5
-    elif domain_suffix in ['io', 'ai', 'tech']:
-        suffix_weight = 3
+    # Check for word coverage
+    word_coverage = sum(1 for word in words if word in domain_main) / len(words)
 
-    total_score = (exact_match * 0.4 + partial_match * 0.4 + exact_domain_match * 0.2) + suffix_weight
+    # Penalize long domain names
+    length_penalty = max(0, (len(domain_main) - 15) * 0.5)
 
+    # Combine scores
+    total_score = (
+        exact_match * 0.4 +      # Weight for exact match
+        partial_match * 0.3 +    # Weight for partial match
+        exact_domain_match * 0.3 +  # Weight for base name match
+        word_coverage * 20       # Boost for keyword coverage
+    ) - length_penalty           # Penalize overly long domains
+
+    # Convert total score into a 1-5 scale
     if total_score > 90:
         return 5
     elif total_score > 75:
@@ -48,29 +59,34 @@ def score_similarity(domain, keyword):
     else:
         return 1
 
+
 def process_results(data, keyword):
     excluded_domains = [
         'reddit.com', 'quora.com', 'pinterest.com', 'youtube.com', 'linkedin.com',
         'github.com', 'tiktok.com', 'wikipedia.com', 'twitter.com', 'x.com',
         'wn.com', 'justdial.com', 'humbleworth.com', 'ebay.com'
     ]
-    seen_domains = set()
+    seen_domains = set()  # Track already processed domains
     results = []
+    keyword_lower = keyword.lower()  # Convert keyword to lowercase for comparison
 
     for item in data.get('items', []):
-        domain = item['displayLink']
-        if domain in seen_domains:
+        domain = item['displayLink'].lower()  # Convert domain to lowercase
+        if domain in seen_domains:  # Skip duplicate domains
+            continue
+        if domain == keyword_lower:  # Skip exact match with the input keyword
             continue
         if any(excluded in domain for excluded in excluded_domains) or \
            'facebook.com' in domain or 'linkedin.com' in domain or 'instagram.com' in domain or 'youtube.com' in domain:
             continue
 
-        seen_domains.add(domain)
+        seen_domains.add(domain)  # Mark domain as seen
         score = score_similarity(domain, keyword)
-        if score >= 1:
+        if score >= 1:  # Filter results with a score of 1 or higher
             results.append({'Domain': domain, 'Similarity Score': score})
     
     return results
+
 
 def search_and_display(keyword, num_pages, tree):
     try:

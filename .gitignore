@@ -23,4 +23,4 @@ def process_results(data, keyword):
     return results
     
 # Configuration files
-    config.py
+.env
